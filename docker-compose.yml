@@ -1,0 +1,15 @@
+services:
+  plane-mcp:
+    build: .
+    image: plane-mcp:latest
+    ports:
+      - "8000:8000"
+    environment:
+      PLANE_API_KEY: "${PLANE_API_KEY:?set PLANE_API_KEY in .env}"
+      PLANE_API_URL: "${PLANE_API_URL:-https://api.plane.so}"
+      PLANE_WORKSPACE_SLUG: "${PLANE_WORKSPACE_SLUG:-}"
+      PLANE_MCP_ENABLED_TOOLS: "${PLANE_MCP_ENABLED_TOOLS:-}"
+      PLANE_MCP_HTTP: "1"
+      PLANE_MCP_HOST: "0.0.0.0"
+      PLANE_MCP_PORT: "8000"
+    restart: unless-stopped
