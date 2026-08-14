@@ -164,9 +164,18 @@ async def execute_tool(name: str, arguments: dict) -> Any:
 
     spec = TOOL_SPECS[name]
 
-    if spec.get("synthetic") == "list_workspaces":
+    synthetic = spec.get("synthetic")
+    if synthetic == "list_workspaces":
         slug = arguments.get("workspace_slug") or _config.workspace_slug
         return await _client_synth_list_workspaces(slug)
+    if synthetic == "list_sub_issues":
+        return await _client_synth_list_sub_issues(
+            arguments["workspace_slug"], arguments["project_id"], arguments["issue_id"]
+        )
+    if synthetic == "create_intake_issue":
+        return await _client_synth_create_intake_issue(arguments)
+    if synthetic == "update_intake_issue":
+        return await _client_synth_update_intake_issue(arguments)
 
     method = spec["method"]
     path_template = spec["path"]
@@ -199,11 +208,14 @@ async def execute_tool(name: str, arguments: dict) -> Any:
 
     # POST / PATCH
     payload_map = spec.get("payload_map", {})
+    list_wrap = spec.get("list_wrap_payload", ())
     payload: dict[str, Any] = dict(spec.get("static_payload", {}))
     for key, value in remaining.items():
         mapped_key = payload_map.get(key, key)
         if mapped_key is None:
             continue
+        if mapped_key in list_wrap and not isinstance(value, list):
+            value = [value]
         payload[mapped_key] = value
 
     if method == "POST":
@@ -215,13 +227,115 @@ async def execute_tool(name: str, arguments: dict) -> Any:
 
 
 async def _client_synth_list_workspaces(workspace_slug: str | None) -> dict[str, Any]:
-    """The Plane API key is scoped to a single workspace: there is no
-    list-all endpoint, and the scoped key generally cannot read
-    arbitrary workspace detail. Report the workspace the caller
-    configured/asked for."""
-    if not workspace_slug:
-        return {"workspaces": []}
-    return {"workspaces": [{"slug": workspace_slug}]}
+    """List accessible workspaces.
+
+    If a workspace slug is configured/passed, short-circuit without a live
+    call: the Plane API key is scoped to a single workspace, so there's
+    nothing more to discover and the scoped key generally can't read
+    arbitrary workspace detail anyway. Otherwise, call the real
+    GET /api/v1/workspaces/ endpoint.
+    """
+    if workspace_slug:
+        return {"workspaces": [{"slug": workspace_slug}]}
+    assert _client is not None
+    result = await _client.get("/api/v1/workspaces/")
+    workspaces = result if isinstance(result, list) else (result or {}).get("results", [])
+    return {
+        "workspaces": [
+            {
+                "id": w.get("id"),
+                "name": w.get("name"),
+                "slug": w.get("slug"),
+                "created_at": w.get("created_at"),
+                "owner": w.get("owner"),
+            }
+            for w in (workspaces if isinstance(workspaces, list) else [])
+        ]
+    }
+
+
+_SUB_ISSUES_MAX_PAGES = 20  # 20 * 100 = 2000 issues scanned before giving up
+
+
+async def _client_synth_list_sub_issues(
+    workspace_slug: str, project_id: str, issue_id: str
+) -> dict[str, Any]:
+    """List the sub-issues (children) of an issue.
+
+    There is no dedicated sub-issues endpoint and the server-side ?parent=
+    filter is a confirmed no-op, so this paginates the project's issues and
+    filters client-side on `parent == issue_id`. Scans up to 2000 issues
+    (20 pages of 100); if the project has more than that, `truncated` is
+    set True and not all sub-issues may be listed.
+    """
+    assert _client is not None
+    path = f"/api/v1/workspaces/{workspace_slug}/projects/{project_id}/issues/"
+    children: list[dict[str, Any]] = []
+    truncated = True
+    for page in range(1, _SUB_ISSUES_MAX_PAGES + 1):
+        result = await _client.get(path, params={"page": page, "per_page": 100})
+        rows = result if isinstance(result, list) else (result or {}).get("results", [])
+        if not isinstance(rows, list):
+            rows = []
+        for row in rows:
+            if row.get("parent") == issue_id:
+                children.append(
+                    {
+                        "id": row.get("id"),
+                        "name": row.get("name"),
+                        "sequence_id": row.get("sequence_id"),
+                        "state": row.get("state"),
+                        "priority": row.get("priority"),
+                    }
+                )
+        has_more = result.get("next_page_results") if isinstance(result, dict) else False
+        if not has_more or not rows:
+            truncated = False
+            break
+    return {
+        "parent_issue_id": issue_id,
+        "sub_issues": children,
+        "count": len(children),
+        "truncated": truncated,
+    }
+
+
+async def _client_synth_create_intake_issue(arguments: dict) -> Any:
+    """Create an intake (inbox) issue.
+
+    Verified: POST .../inbox-issues/ body {"issue": {name, description_html}}
+    — the work-item fields are nested under an "issue" key, unlike
+    list_issues/create_issue.
+    """
+    assert _client is not None
+    workspace_slug = arguments["workspace_slug"]
+    project_id = arguments["project_id"]
+    issue_body: dict[str, Any] = {"name": arguments["title"]}
+    if arguments.get("description"):
+        issue_body["description_html"] = arguments["description"]
+    path = f"/api/v1/workspaces/{workspace_slug}/projects/{project_id}/inbox-issues/"
+    return await _client.post(path, json={"issue": issue_body})
+
+
+async def _client_synth_update_intake_issue(arguments: dict) -> Any:
+    """Update an intake (inbox) issue's title/description.
+
+    Verified: PATCH .../inbox-issues/{issue_id} body {"issue": {...}}
+    (note: no trailing slash on the detail route).
+    """
+    assert _client is not None
+    workspace_slug = arguments["workspace_slug"]
+    project_id = arguments["project_id"]
+    intake_issue_id = arguments["intake_issue_id"]
+    issue_body: dict[str, Any] = {}
+    if arguments.get("title"):
+        issue_body["name"] = arguments["title"]
+    if arguments.get("description"):
+        issue_body["description_html"] = arguments["description"]
+    if not issue_body:
+        raise ValueError("at least one of title/description is required")
+    path = f"/api/v1/workspaces/{workspace_slug}/projects/{project_id}/inbox-issues/{intake_issue_id}"
+    return await _client.patch(path, json={"issue": issue_body})
 
 
 async def run_stdio(config: Config) -> None:

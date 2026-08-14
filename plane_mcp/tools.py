@@ -50,6 +50,11 @@ TOOL_SPECS: dict[str, dict[str, Any]] = {
         },
         "required": [],
         "synthetic": "list_workspaces",
+        # Verified against the deployed reference: when no workspace slug is
+        # configured/passed, this calls GET /api/v1/workspaces/ for real
+        # (not just an echo). When a slug IS configured, it short-circuits
+        # without a live call, since the Plane API key is scoped to a single
+        # workspace and there's no cross-workspace list endpoint to hit.
     },
     "list_workspace_members": {
         "description": "List members of a workspace",
@@ -114,11 +119,13 @@ TOOL_SPECS: dict[str, dict[str, Any]] = {
             "module_view": _BOOL,
             "issue_views_view": _BOOL,
             "page_view": _BOOL,
-            "inbox_view": _BOOL,
+            "intake_view": _BOOL,
         },
         "required": ["workspace_slug", "project_id"],
         "method": "PATCH",
         "path": "/api/v1/workspaces/{workspace_slug}/projects/{project_id}/",
+        # Verified: the deployed reference confirmed "inbox_view" does NOT
+        # exist on the project object — the flag is "intake_view".
     },
     # -- project members --------------------------------------------
     "list_project_members": {
@@ -126,7 +133,7 @@ TOOL_SPECS: dict[str, dict[str, Any]] = {
         "properties": {"workspace_slug": _WS, "project_id": _PID},
         "required": ["workspace_slug", "project_id"],
         "method": "GET",
-        "path": "/api/v1/workspaces/{workspace_slug}/projects/{project_id}/members/",
+        "path": "/api/v1/workspaces/{workspace_slug}/projects/{project_id}/project-members/",
     },
     "add_project_member": {
         "description": "Add a member to a project",
@@ -138,7 +145,8 @@ TOOL_SPECS: dict[str, dict[str, Any]] = {
         },
         "required": ["workspace_slug", "project_id", "member_id"],
         "method": "POST",
-        "path": "/api/v1/workspaces/{workspace_slug}/projects/{project_id}/members/",
+        "path": "/api/v1/workspaces/{workspace_slug}/projects/{project_id}/project-members/",
+        "payload_map": {"member_id": "member"},
     },
     "update_project_member": {
         "description": "Update a project member's role",
@@ -150,7 +158,7 @@ TOOL_SPECS: dict[str, dict[str, Any]] = {
         },
         "required": ["workspace_slug", "project_id", "member_id"],
         "method": "PATCH",
-        "path": "/api/v1/workspaces/{workspace_slug}/projects/{project_id}/members/{member_id}/",
+        "path": "/api/v1/workspaces/{workspace_slug}/projects/{project_id}/project-members/{member_id}/",
     },
     "remove_project_member": {
         "description": "Remove a member from a project (destructive; requires confirm=true)",
@@ -162,7 +170,7 @@ TOOL_SPECS: dict[str, dict[str, Any]] = {
         },
         "required": ["workspace_slug", "project_id", "member_id"],
         "method": "DELETE",
-        "path": "/api/v1/workspaces/{workspace_slug}/projects/{project_id}/members/{member_id}/",
+        "path": "/api/v1/workspaces/{workspace_slug}/projects/{project_id}/project-members/{member_id}/",
         "destructive": "member_id",
     },
     # -- issues ---------------------------------------------------------
@@ -171,13 +179,15 @@ TOOL_SPECS: dict[str, dict[str, Any]] = {
         "properties": {
             "workspace_slug": _WS,
             "project_id": _PID,
-            "cursor": _STR,
+            "page": {**_INT, "description": "Page number (1-indexed)"},
             "page_size": _INT,
         },
         "required": ["workspace_slug", "project_id"],
         "method": "GET",
         "path": "/api/v1/workspaces/{workspace_slug}/projects/{project_id}/issues/",
         "query_map": {"page_size": "per_page"},
+        # Verified: pagination is page-number based (?page=&per_page=), not
+        # cursor based.
     },
     "get_issue": {
         "description": "Get a single issue",
@@ -192,14 +202,35 @@ TOOL_SPECS: dict[str, dict[str, Any]] = {
             "workspace_slug": _WS,
             "project_id": _PID,
             "title": _STR,
-            "description": _STR,
+            "description": {
+                **_STR,
+                "description": "Plain text; sent as description_html (Plane ignores a raw 'description' field)",
+            },
             "labels": _STR_ARRAY,
             "priority": _STR,
+            "state_id": {**_STR, "description": "State/status ID"},
+            "assignee_id": {**_STR, "description": "Assignee user ID"},
+            "start_date": {**_STR, "description": "YYYY-MM-DD"},
+            "target_date": {**_STR, "description": "YYYY-MM-DD (due date)"},
+            "parent_id": {**_STR, "description": "Parent issue ID, to create this as a sub-issue"},
         },
         "required": ["workspace_slug", "project_id", "title"],
         "method": "POST",
         "path": "/api/v1/workspaces/{workspace_slug}/projects/{project_id}/issues/",
-        "payload_map": {"title": "name"},
+        "payload_map": {
+            "title": "name",
+            "description": "description_html",
+            "labels": "label_ids",
+            "state_id": "state",
+            "assignee_id": "assignee_ids",
+            "parent_id": "parent",
+        },
+        "list_wrap_payload": ["assignee_ids"],
+        # Verified: Plane's create-issue endpoint silently ignores a plain
+        # "description" field — only "description_html" persists. Labels are
+        # sent as "label_ids", assignee as a single-element "assignee_ids"
+        # list, and sub-issues are created via the plain "parent" field
+        # (there's no separate sub-issue endpoint).
     },
     "update_issue": {
         "description": "Update an existing issue",
@@ -208,15 +239,28 @@ TOOL_SPECS: dict[str, dict[str, Any]] = {
             "project_id": _PID,
             "issue_id": _STR,
             "title": _STR,
-            "description": _STR,
+            "description": {
+                **_STR,
+                "description": "Plain text; sent as description_html (Plane ignores a raw 'description' field)",
+            },
             "labels": _STR_ARRAY,
-            "status": _STR,
+            "status": {**_STR, "description": "State/status ID (sent as 'state')"},
             "priority": _STR,
+            "assignee_id": {**_STR, "description": "Assignee user ID"},
+            "start_date": {**_STR, "description": "YYYY-MM-DD"},
+            "target_date": {**_STR, "description": "YYYY-MM-DD (due date)"},
         },
         "required": ["workspace_slug", "project_id", "issue_id"],
         "method": "PATCH",
         "path": "/api/v1/workspaces/{workspace_slug}/projects/{project_id}/issues/{issue_id}/",
-        "payload_map": {"title": "name", "status": "state"},
+        "payload_map": {
+            "title": "name",
+            "status": "state",
+            "description": "description_html",
+            "labels": "label_ids",
+            "assignee_id": "assignee_ids",
+        },
+        "list_wrap_payload": ["assignee_ids"],
     },
     "delete_issue": {
         "description": "Delete an issue (destructive; requires confirm=true and exact issue_id)",
@@ -239,11 +283,16 @@ TOOL_SPECS: dict[str, dict[str, Any]] = {
         "path": "/api/v1/workspaces/{workspace_slug}/projects/{project_id}/issues/{issue_id}/activities/",
     },
     "list_sub_issues": {
-        "description": "List the sub-issues of an issue",
+        "description": "List the sub-issues (children) of an issue",
         "properties": {"workspace_slug": _WS, "project_id": _PID, "issue_id": _STR},
         "required": ["workspace_slug", "project_id", "issue_id"],
-        "method": "GET",
-        "path": "/api/v1/workspaces/{workspace_slug}/projects/{project_id}/issues/{issue_id}/sub-issues/",
+        "synthetic": "list_sub_issues",
+        # Verified: there is no dedicated sub-issues endpoint on the Plane
+        # v1 REST API — GET/POST .../issues/{id}/sub-issues/ 404s, and the
+        # server-side ?parent= filter on GET .../issues/ is a confirmed
+        # no-op. Sub-issue hierarchy is modeled solely through the
+        # `parent` field on the child issue, so this paginates the
+        # project's issues and filters client-side.
     },
     "set_issue_parent": {
         "description": "Set (or change) an issue's parent issue",
@@ -398,11 +447,11 @@ TOOL_SPECS: dict[str, dict[str, Any]] = {
     },
     # -- issue relations --------------------------------------------------
     "list_issue_relations": {
-        "description": "List an issue's relations (blocks, blocked_by, duplicate, relates_to)",
+        "description": "List an issue's relations (blocking, blocked_by, duplicate, relates_to, etc)",
         "properties": {"workspace_slug": _WS, "project_id": _PID, "issue_id": _STR},
         "required": ["workspace_slug", "project_id", "issue_id"],
         "method": "GET",
-        "path": "/api/v1/workspaces/{workspace_slug}/projects/{project_id}/issues/{issue_id}/issue-relation/",
+        "path": "/api/v1/workspaces/{workspace_slug}/projects/{project_id}/issues/{issue_id}/relations/",
     },
     "create_issue_relation": {
         "description": "Create a relation from an issue to one or more other issues",
@@ -412,13 +461,16 @@ TOOL_SPECS: dict[str, dict[str, Any]] = {
             "issue_id": _STR,
             "relation_type": {
                 **_STR,
-                "description": "blocking | blocked_by | duplicate | relates_to",
+                "description": (
+                    "blocking | blocked_by | start_after | start_before | "
+                    "finish_after | finish_before | relates_to | duplicate"
+                ),
             },
             "issue_ids": _STR_ARRAY,
         },
         "required": ["workspace_slug", "project_id", "issue_id", "relation_type", "issue_ids"],
         "method": "POST",
-        "path": "/api/v1/workspaces/{workspace_slug}/projects/{project_id}/issues/{issue_id}/issue-relation/",
+        "path": "/api/v1/workspaces/{workspace_slug}/projects/{project_id}/issues/{issue_id}/relations/",
         "payload_map": {"issue_ids": "issues"},
     },
     "remove_issue_relation": {
@@ -427,13 +479,25 @@ TOOL_SPECS: dict[str, dict[str, Any]] = {
             "workspace_slug": _WS,
             "project_id": _PID,
             "issue_id": _STR,
-            "relation_id": _STR,
+            "relation_type": {
+                **_STR,
+                "description": (
+                    "blocking | blocked_by | start_after | start_before | "
+                    "finish_after | finish_before | relates_to | duplicate"
+                ),
+            },
+            "related_issue_id": {**_STR, "description": "The related issue's ID"},
             "confirm": _BOOL,
         },
-        "required": ["workspace_slug", "project_id", "issue_id", "relation_id"],
-        "method": "DELETE",
-        "path": "/api/v1/workspaces/{workspace_slug}/projects/{project_id}/issues/{issue_id}/issue-relation/{relation_id}/",
-        "destructive": "relation_id",
+        "required": ["workspace_slug", "project_id", "issue_id", "relation_type", "related_issue_id"],
+        "method": "POST",
+        "path": "/api/v1/workspaces/{workspace_slug}/projects/{project_id}/issues/{issue_id}/relations/remove/",
+        "payload_map": {"related_issue_id": "related_issue"},
+        "destructive": "related_issue_id",
+        # Verified: Plane's create-relation response has no relation-record
+        # id to DELETE by. Removal is a POST to .../relations/remove/ with
+        # body {relation_type, related_issue}, keyed on the same pair used
+        # to create it.
     },
     # -- labels -----------------------------------------------------------
     "list_labels": {
@@ -450,11 +514,12 @@ TOOL_SPECS: dict[str, dict[str, Any]] = {
             "project_id": _PID,
             "name": _STR,
             "color": _STR,
-            "description": _STR,
         },
         "required": ["workspace_slug", "project_id", "name"],
         "method": "POST",
         "path": "/api/v1/workspaces/{workspace_slug}/projects/{project_id}/labels/",
+        # Verified: the deployed label create/update calls only send
+        # name/color; there's no verified "description" field on labels.
     },
     "update_label": {
         "description": "Update a label",
@@ -464,7 +529,6 @@ TOOL_SPECS: dict[str, dict[str, Any]] = {
             "label_id": _STR,
             "name": _STR,
             "color": _STR,
-            "description": _STR,
         },
         "required": ["workspace_slug", "project_id", "label_id"],
         "method": "PATCH",
@@ -548,13 +612,14 @@ TOOL_SPECS: dict[str, dict[str, Any]] = {
             "workspace_slug": _WS,
             "project_id": _PID,
             "name": _STR,
-            "description": _STR,
+            "description": {**_STR, "description": "Plain text; sent as description_html"},
             "start_date": {**_STR, "description": "YYYY-MM-DD"},
             "end_date": {**_STR, "description": "YYYY-MM-DD"},
         },
         "required": ["workspace_slug", "project_id", "name"],
         "method": "POST",
         "path": "/api/v1/workspaces/{workspace_slug}/projects/{project_id}/cycles/",
+        "payload_map": {"description": "description_html"},
     },
     "get_cycle": {
         "description": "Get a single cycle",
@@ -570,13 +635,14 @@ TOOL_SPECS: dict[str, dict[str, Any]] = {
             "project_id": _PID,
             "cycle_id": _STR,
             "name": _STR,
-            "description": _STR,
+            "description": {**_STR, "description": "Plain text; sent as description_html"},
             "start_date": _STR,
             "end_date": _STR,
         },
         "required": ["workspace_slug", "project_id", "cycle_id"],
         "method": "PATCH",
         "path": "/api/v1/workspaces/{workspace_slug}/projects/{project_id}/cycles/{cycle_id}/",
+        "payload_map": {"description": "description_html"},
     },
     "delete_cycle": {
         "description": "Delete a cycle (destructive; requires confirm=true)",
@@ -651,13 +717,14 @@ TOOL_SPECS: dict[str, dict[str, Any]] = {
             "workspace_slug": _WS,
             "project_id": _PID,
             "name": _STR,
-            "description": _STR,
+            "description": {**_STR, "description": "Plain text; sent as description_html"},
             "start_date": _STR,
             "target_date": _STR,
         },
         "required": ["workspace_slug", "project_id", "name"],
         "method": "POST",
         "path": "/api/v1/workspaces/{workspace_slug}/projects/{project_id}/modules/",
+        "payload_map": {"description": "description_html"},
     },
     "get_module": {
         "description": "Get a single module",
@@ -673,7 +740,7 @@ TOOL_SPECS: dict[str, dict[str, Any]] = {
             "project_id": _PID,
             "module_id": _STR,
             "name": _STR,
-            "description": _STR,
+            "description": {**_STR, "description": "Plain text; sent as description_html"},
             "start_date": _STR,
             "target_date": _STR,
             "status": _STR,
@@ -681,6 +748,7 @@ TOOL_SPECS: dict[str, dict[str, Any]] = {
         "required": ["workspace_slug", "project_id", "module_id"],
         "method": "PATCH",
         "path": "/api/v1/workspaces/{workspace_slug}/projects/{project_id}/modules/{module_id}/",
+        "payload_map": {"description": "description_html"},
     },
     "delete_module": {
         "description": "Delete a module (destructive; requires confirm=true)",
@@ -796,12 +864,15 @@ TOOL_SPECS: dict[str, dict[str, Any]] = {
             "workspace_slug": _WS,
             "project_id": _PID,
             "name": _STR,
-            "description": _STR,
-            "filters": {"type": "object"},
+            "description": {**_STR, "description": "Plain text; sent as description_html"},
         },
         "required": ["workspace_slug", "project_id", "name"],
         "method": "POST",
         "path": "/api/v1/workspaces/{workspace_slug}/projects/{project_id}/views/",
+        "payload_map": {"description": "description_html"},
+        # Verified: filters/query start empty on create and are populated
+        # via Plane's UI, not this API — a "filters" body field was never
+        # confirmed to do anything, so it's not exposed here.
     },
     "get_view": {
         "description": "Get a single project view",
@@ -817,12 +888,12 @@ TOOL_SPECS: dict[str, dict[str, Any]] = {
             "project_id": _PID,
             "view_id": _STR,
             "name": _STR,
-            "description": _STR,
-            "filters": {"type": "object"},
+            "description": {**_STR, "description": "Plain text; sent as description_html"},
         },
         "required": ["workspace_slug", "project_id", "view_id"],
         "method": "PATCH",
         "path": "/api/v1/workspaces/{workspace_slug}/projects/{project_id}/views/{view_id}/",
+        "payload_map": {"description": "description_html"},
     },
     "delete_view": {
         "description": "Delete a project view (destructive; requires confirm=true)",
@@ -838,31 +909,35 @@ TOOL_SPECS: dict[str, dict[str, Any]] = {
         "destructive": "view_id",
     },
     # -- workspace views ------------------------------------------------
+    # Verified: the workspace-scoped views resource lives directly at
+    # /api/v1/workspaces/{workspace_slug}/views/ — there is no separate
+    # "workspace-views" URL segment; that path 404s on the deployed
+    # reference instance.
     "list_workspace_views": {
         "description": "List saved issue views at the workspace level",
         "properties": {"workspace_slug": _WS},
         "required": ["workspace_slug"],
         "method": "GET",
-        "path": "/api/v1/workspaces/{workspace_slug}/workspace-views/",
+        "path": "/api/v1/workspaces/{workspace_slug}/views/",
     },
     "create_workspace_view": {
         "description": "Create a workspace-level saved issue view",
         "properties": {
             "workspace_slug": _WS,
             "name": _STR,
-            "description": _STR,
-            "filters": {"type": "object"},
+            "description": {**_STR, "description": "Plain text; sent as description_html"},
         },
         "required": ["workspace_slug", "name"],
         "method": "POST",
-        "path": "/api/v1/workspaces/{workspace_slug}/workspace-views/",
+        "path": "/api/v1/workspaces/{workspace_slug}/views/",
+        "payload_map": {"description": "description_html"},
     },
     "get_workspace_view": {
         "description": "Get a single workspace view",
         "properties": {"workspace_slug": _WS, "view_id": _STR},
         "required": ["workspace_slug", "view_id"],
         "method": "GET",
-        "path": "/api/v1/workspaces/{workspace_slug}/workspace-views/{view_id}/",
+        "path": "/api/v1/workspaces/{workspace_slug}/views/{view_id}/",
     },
     "update_workspace_view": {
         "description": "Update a workspace view",
@@ -870,28 +945,32 @@ TOOL_SPECS: dict[str, dict[str, Any]] = {
             "workspace_slug": _WS,
             "view_id": _STR,
             "name": _STR,
-            "description": _STR,
-            "filters": {"type": "object"},
+            "description": {**_STR, "description": "Plain text; sent as description_html"},
         },
         "required": ["workspace_slug", "view_id"],
         "method": "PATCH",
-        "path": "/api/v1/workspaces/{workspace_slug}/workspace-views/{view_id}/",
+        "path": "/api/v1/workspaces/{workspace_slug}/views/{view_id}/",
+        "payload_map": {"description": "description_html"},
     },
     "delete_workspace_view": {
         "description": "Delete a workspace view (destructive; requires confirm=true)",
         "properties": {"workspace_slug": _WS, "view_id": _STR, "confirm": _BOOL},
         "required": ["workspace_slug", "view_id"],
         "method": "DELETE",
-        "path": "/api/v1/workspaces/{workspace_slug}/workspace-views/{view_id}/",
+        "path": "/api/v1/workspaces/{workspace_slug}/views/{view_id}/",
         "destructive": "view_id",
     },
     # -- intake (inbox) issues --------------------------------------------
+    # Verified: Plane's v1 REST API names this resource "inbox-issues" in
+    # its URL path even though the product UI calls the feature "Intake"
+    # ("intake-issues" 404s). Detail routes (get/update/delete) have NO
+    # trailing slash; list/create do.
     "list_intake_issues": {
         "description": "List issues sitting in a project's intake/inbox queue",
         "properties": {"workspace_slug": _WS, "project_id": _PID},
         "required": ["workspace_slug", "project_id"],
         "method": "GET",
-        "path": "/api/v1/workspaces/{workspace_slug}/projects/{project_id}/intake-issues/",
+        "path": "/api/v1/workspaces/{workspace_slug}/projects/{project_id}/inbox-issues/",
     },
     "create_intake_issue": {
         "description": "Submit a new issue into a project's intake/inbox queue",
@@ -899,34 +978,35 @@ TOOL_SPECS: dict[str, dict[str, Any]] = {
             "workspace_slug": _WS,
             "project_id": _PID,
             "title": _STR,
-            "description": _STR,
+            "description": {**_STR, "description": "Plain text; sent as description_html"},
         },
         "required": ["workspace_slug", "project_id", "title"],
-        "method": "POST",
-        "path": "/api/v1/workspaces/{workspace_slug}/projects/{project_id}/intake-issues/",
-        "payload_map": {"title": "name"},
+        "synthetic": "create_intake_issue",
+        # Verified: the work-item fields are nested under an "issue" key
+        # in the request body (unlike list_issues/create_issue), i.e.
+        # POST .../inbox-issues/ body {"issue": {"name": ..., "description_html": ...}}.
+        # A plain payload_map can't express that nesting, hence synthetic.
     },
     "get_intake_issue": {
         "description": "Get a single intake issue",
         "properties": {"workspace_slug": _WS, "project_id": _PID, "intake_issue_id": _STR},
         "required": ["workspace_slug", "project_id", "intake_issue_id"],
         "method": "GET",
-        "path": "/api/v1/workspaces/{workspace_slug}/projects/{project_id}/intake-issues/{intake_issue_id}/",
+        "path": "/api/v1/workspaces/{workspace_slug}/projects/{project_id}/inbox-issues/{intake_issue_id}",
     },
     "update_intake_issue": {
-        "description": "Update an intake issue, e.g. to accept/reject/snooze it",
+        "description": "Update an intake issue's title/description, e.g. before triage",
         "properties": {
             "workspace_slug": _WS,
             "project_id": _PID,
             "intake_issue_id": _STR,
-            "status": {
-                **_INT,
-                "description": "-2=pending, -1=rejected, 0=snoozed, 1=accepted, 2=duplicate",
-            },
+            "title": _STR,
+            "description": {**_STR, "description": "Plain text; sent as description_html"},
         },
         "required": ["workspace_slug", "project_id", "intake_issue_id"],
-        "method": "PATCH",
-        "path": "/api/v1/workspaces/{workspace_slug}/projects/{project_id}/intake-issues/{intake_issue_id}/",
+        "synthetic": "update_intake_issue",
+        # Same nested-body shape as create_intake_issue: PATCH
+        # .../inbox-issues/{id} body {"issue": {...}}.
     },
     "delete_intake_issue": {
         "description": "Delete an intake issue (destructive; requires confirm=true)",
@@ -938,7 +1018,7 @@ TOOL_SPECS: dict[str, dict[str, Any]] = {
         },
         "required": ["workspace_slug", "project_id", "intake_issue_id"],
         "method": "DELETE",
-        "path": "/api/v1/workspaces/{workspace_slug}/projects/{project_id}/intake-issues/{intake_issue_id}/",
+        "path": "/api/v1/workspaces/{workspace_slug}/projects/{project_id}/inbox-issues/{intake_issue_id}",
         "destructive": "intake_issue_id",
     },
     # -- estimates -------------------------------------------------------
@@ -950,41 +1030,46 @@ TOOL_SPECS: dict[str, dict[str, Any]] = {
         "path": "/api/v1/workspaces/{workspace_slug}/projects/{project_id}/estimates/",
     },
     "create_estimate": {
-        "description": "Create an estimate system in a project",
+        "description": "Create the estimate system for a project (a project has one active estimate config)",
         "properties": {
             "workspace_slug": _WS,
             "project_id": _PID,
             "name": _STR,
             "type": {**_STR, "description": "categories | points | time"},
+            "description": {**_STR, "description": "Plain text, sent as-is (NOT description_html for estimates)"},
         },
         "required": ["workspace_slug", "project_id", "name"],
         "method": "POST",
         "path": "/api/v1/workspaces/{workspace_slug}/projects/{project_id}/estimates/",
     },
     "update_estimate": {
-        "description": "Update an estimate system",
+        "description": "Update the project's estimate system",
         "properties": {
             "workspace_slug": _WS,
             "project_id": _PID,
-            "estimate_id": _STR,
-            "name": _STR,
+            "description": {**_STR, "description": "Plain text, sent as-is; the only field Plane's update-estimate accepts"},
         },
-        "required": ["workspace_slug", "project_id", "estimate_id"],
+        "required": ["workspace_slug", "project_id", "description"],
         "method": "PATCH",
-        "path": "/api/v1/workspaces/{workspace_slug}/projects/{project_id}/estimates/{estimate_id}/",
+        "path": "/api/v1/workspaces/{workspace_slug}/projects/{project_id}/estimates/",
+        # Verified: there's no estimate id in the path — a project has
+        # exactly one active estimate config, and only "description" is
+        # accepted (name/type are NOT updatable via this endpoint).
     },
     "delete_estimate": {
-        "description": "Delete an estimate system (destructive; requires confirm=true)",
+        "description": "Delete the project's estimate system (destructive; requires confirm=true)",
         "properties": {
             "workspace_slug": _WS,
             "project_id": _PID,
-            "estimate_id": _STR,
             "confirm": _BOOL,
         },
-        "required": ["workspace_slug", "project_id", "estimate_id"],
+        "required": ["workspace_slug", "project_id"],
         "method": "DELETE",
-        "path": "/api/v1/workspaces/{workspace_slug}/projects/{project_id}/estimates/{estimate_id}/",
-        "destructive": "estimate_id",
+        "path": "/api/v1/workspaces/{workspace_slug}/projects/{project_id}/estimates/",
+        # Verified: no estimate id in the path (see update_estimate). Since
+        # there's no natural per-call target id, confirm-gating is keyed on
+        # project_id instead.
+        "destructive": "project_id",
     },
     # -- webhooks -----------------------------------------------------
     "list_webhooks": {
