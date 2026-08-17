@@ -13,4 +13,4 @@ ENV PLANE_MCP_HTTP=1 \
 
 EXPOSE 8000
 
-ENTRYPOINT ["plane-mcp"]
+ENTRYPOINT ["plane-project-mcp"]

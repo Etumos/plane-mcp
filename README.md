@@ -1,4 +1,4 @@
-# plane-mcp
+# plane-project-mcp
 
 An [MCP](https://modelcontextprotocol.io) server for [Plane](https://plane.so) —
 the open-source project management tool. Point it at your own Plane
@@ -16,13 +16,13 @@ Pick one:
 
 ```bash
 # Run without installing (recommended for MCP client use)
-uvx plane-mcp
+uvx plane-project-mcp
 
 # or
-pipx run plane-mcp
+pipx run plane-project-mcp
 
 # or install into your environment
-pip install plane-mcp
+pip install plane-project-mcp
 ```
 
 ## Configuration
@@ -56,7 +56,7 @@ holding it can act as your workspace via this server's tools.
 
 ## Using it with an MCP client
 
-`plane-mcp` speaks **stdio** by default, which is the transport MCP
+`plane-project-mcp` speaks **stdio** by default, which is the transport MCP
 clients launch as a subprocess.
 
 ### Claude Desktop
@@ -68,7 +68,7 @@ Add to `claude_desktop_config.json`:
   "mcpServers": {
     "plane": {
       "command": "uvx",
-      "args": ["plane-mcp"],
+      "args": ["plane-project-mcp"],
       "env": {
         "PLANE_API_KEY": "your-plane-api-token",
         "PLANE_WORKSPACE_SLUG": "your-workspace-slug"
@@ -87,7 +87,7 @@ Add to `.cursor/mcp.json` (project) or `~/.cursor/mcp.json` (global):
   "mcpServers": {
     "plane": {
       "command": "uvx",
-      "args": ["plane-mcp"],
+      "args": ["plane-project-mcp"],
       "env": {
         "PLANE_API_KEY": "your-plane-api-token",
         "PLANE_WORKSPACE_SLUG": "your-workspace-slug"
@@ -117,17 +117,17 @@ Most MCP-capable clients accept the same stdio shape:
 }
 ```
 
-Swap `command`/`args` for `pip install plane-mcp` + `["-m", "plane_mcp.server"]`,
-or `uvx`/`pipx run` + `["plane-mcp"]` — whichever fits how you installed it.
+Swap `command`/`args` for `pip install plane-project-mcp` + `["-m", "plane_mcp.server"]`,
+or `uvx`/`pipx run` + `["plane-project-mcp"]` — whichever fits how you installed it.
 
 ## Self-hosting as an HTTP/SSE service
 
-If you'd rather run `plane-mcp` as a long-lived service (e.g. behind a
+If you'd rather run `plane-project-mcp` as a long-lived service (e.g. behind a
 reverse proxy) instead of launching it per-client, use `--http`:
 
 ```bash
-pip install 'plane-mcp[http]'
-PLANE_API_KEY=... plane-mcp --http --host 0.0.0.0 --port 8000
+pip install 'plane-project-mcp[http]'
+PLANE_API_KEY=... plane-project-mcp --http --host 0.0.0.0 --port 8000
 ```
 
 This serves an SSE endpoint at `/sse` (and `/messages/` for posting
@@ -148,11 +148,11 @@ cp .env.example .env   # fill in PLANE_API_KEY
 docker compose up
 ```
 
-The bundled `docker-compose.yml` runs `plane-mcp --http` on port 8000.
+The bundled `docker-compose.yml` runs `plane-project-mcp --http` on port 8000.
 
 ## Available tools
 
-`plane-mcp` covers the Plane REST API surface: workspaces, projects,
+`plane-project-mcp` covers the Plane REST API surface: workspaces, projects,
 project members, issues (create/read/update/delete, comments,
 attachments, links, relations, sub-issues, activity), labels, states,
 cycles (+ cycle-issue membership, transfers), modules (+ module-issue
