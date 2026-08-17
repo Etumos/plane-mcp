@@ -1,4 +1,4 @@
-"""Environment-variable configuration for plane-mcp.
+"""Environment-variable configuration for plane-project-mcp.
 
 No config file is required. Everything is read from the process
 environment, which is how MCP clients (Claude Desktop, Cursor, etc.)
@@ -49,7 +49,7 @@ def load_config(argv: list[str] | None = None) -> Config:
     api_key = os.environ.get("PLANE_API_KEY", "").strip()
     if not api_key:
         raise ConfigError(
-            "PLANE_API_KEY is not set. plane-mcp requires a Plane API token.\n"
+            "PLANE_API_KEY is not set. plane-project-mcp requires a Plane API token.\n"
             "Get one from your Plane instance under "
             "Workspace Settings -> API Tokens, then set it as an environment "
             "variable, e.g.:\n\n"
@@ -85,5 +85,5 @@ def load_config(argv: list[str] | None = None) -> Config:
 
 def fail_loud(message: str) -> None:
     """Print a clear error to stderr and exit non-zero."""
-    print(f"plane-mcp: {message}", file=sys.stderr)
+    print(f"plane-project-mcp: {message}", file=sys.stderr)
     sys.exit(1)

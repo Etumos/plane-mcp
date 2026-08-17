@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "plane-project-mcp"
-version = "0.1.0"
+version = "0.1.1"
 description = "MCP server for Plane (project management) — list/create/update issues and projects from any MCP client"
 readme = "README.md"
 license = { text = "MIT" }
@@ -37,8 +37,9 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/plane-mcp/plane-mcp"
-Issues = "https://github.com/plane-mcp/plane-mcp/issues"
+Homepage = "https://github.com/Etumos/plane-project-mcp"
+Repository = "https://github.com/Etumos/plane-project-mcp"
+Issues = "https://github.com/Etumos/plane-project-mcp/issues"
 
 [project.scripts]
 plane-project-mcp = "plane_mcp.server:cli"

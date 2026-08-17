@@ -137,8 +137,8 @@ connect to.
 ### Docker
 
 ```bash
-docker build -t plane-mcp .
-docker run --rm -e PLANE_API_KEY=your-plane-api-token -p 8000:8000 plane-mcp
+docker build -t plane-project-mcp .
+docker run --rm -e PLANE_API_KEY=your-plane-api-token -p 8000:8000 plane-project-mcp
 ```
 
 Or with Compose:
@@ -174,8 +174,8 @@ there is no "delete everything" shortcut.
 ## Development
 
 ```bash
-git clone https://github.com/plane-mcp/plane-mcp
-cd plane-mcp
+git clone https://github.com/Etumos/plane-project-mcp
+cd plane-project-mcp
 python3 -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev,http]"
 python -m pytest

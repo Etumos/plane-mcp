@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""plane-mcp — MCP server exposing the full Plane project-management API.
+"""plane-project-mcp — MCP server exposing the full Plane project-management API.
 
 Runs over stdio by default (the transport MCP clients like Claude
 Desktop and Cursor launch). Pass --http (or set PLANE_MCP_HTTP=1) to
@@ -36,7 +36,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger("plane_mcp")
 
-server = Server("plane-mcp")
+server = Server("plane-project-mcp")
 
 # Populated by main() before the server starts serving requests.
 _config: Config | None = None
@@ -344,12 +344,12 @@ async def run_stdio(config: Config) -> None:
     _client = PlaneClient(api_key=config.api_key, api_url=config.api_url)
     try:
         async with stdio_server() as (read_stream, write_stream):
-            logger.info("plane-mcp server started (stdio)")
+            logger.info("plane-project-mcp server started (stdio)")
             await server.run(
                 read_stream,
                 write_stream,
                 InitializationOptions(
-                    server_name="plane-mcp",
+                    server_name="plane-project-mcp",
                     server_version="0.1.0",
                     capabilities=server.get_capabilities(
                         notification_options=NotificationOptions(),
@@ -365,7 +365,7 @@ async def run_http(config: Config) -> None:
     """Run as a long-lived HTTP/SSE service for self-hosting.
 
     Requires the optional `http` extra (uvicorn + starlette):
-        pip install 'plane-mcp[http]'
+        pip install 'plane-project-mcp[http]'
     """
     global _config, _client
     try:
@@ -376,7 +376,7 @@ async def run_http(config: Config) -> None:
     except ImportError as e:  # pragma: no cover
         fail_loud(
             "HTTP mode requires the 'http' extra. Install with:\n\n"
-            "  pip install 'plane-mcp[http]'\n"
+            "  pip install 'plane-project-mcp[http]'\n"
             f"\n(missing dependency: {e.name})"
         )
         return
@@ -394,7 +394,7 @@ async def run_http(config: Config) -> None:
                 read_stream,
                 write_stream,
                 InitializationOptions(
-                    server_name="plane-mcp",
+                    server_name="plane-project-mcp",
                     server_version="0.1.0",
                     capabilities=server.get_capabilities(
                         notification_options=NotificationOptions(),
@@ -410,7 +410,7 @@ async def run_http(config: Config) -> None:
         ]
     )
 
-    logger.info(f"plane-mcp server started (http) on {config.http_host}:{config.http_port}")
+    logger.info(f"plane-project-mcp server started (http) on {config.http_host}:{config.http_port}")
     try:
         uvicorn_config = uvicorn.Config(
             app, host=config.http_host, port=config.http_port, log_level="info"
@@ -423,7 +423,7 @@ async def run_http(config: Config) -> None:
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        prog="plane-mcp",
+        prog="plane-project-mcp",
         description="MCP server for the Plane project-management API.",
     )
     parser.add_argument(
@@ -447,7 +447,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 
 def cli() -> None:
-    """Console-script entrypoint (`plane-mcp`)."""
+    """Console-script entrypoint (`plane-project-mcp`)."""
     args = parse_args()
 
     try:
