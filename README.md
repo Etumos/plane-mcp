@@ -7,7 +7,7 @@ workspace (cloud or self-hosted) and let any MCP-compatible client
 issues, cycles, modules, labels, states, comments, pages, views, and
 more.
 
-No fleet, no broker, no proxy — you run it, you hold your own Plane
+You run it, you hold your own Plane
 API token, it talks straight to the Plane REST API.
 
 ## Install
