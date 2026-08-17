@@ -27,6 +27,11 @@ pip install plane-mcp
 
 ## Configuration
 
+> **Self-hosted Plane users MUST set `PLANE_API_URL`** to their instance
+> (e.g. `https://plane.yourcompany.com`). It defaults to
+> `https://api.plane.so` (Plane Cloud), so if you don't set it, the server
+> talks to Plane Cloud rather than your own deployment.
+
 Everything is configured via environment variables — there is no
 config file.
 
